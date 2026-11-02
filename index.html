@@ -302,7 +302,7 @@ input,select{font:inherit;color:var(--fg);background:var(--input);border:1px sol
    Para que todos los visitantes vean los mismos datos, pega aquí los dos datos de tu proyecto
    de Supabase (Project Settings > API): la URL del proyecto y la clave pública (anon o publishable).
    Nunca pegues la clave service_role. Si los dejas vacíos, la página guarda solo en este navegador. */
-const CLOUD={url:'',key:''};
+const CLOUD={url:'https://zasdvntotobaoxkdofai.supabase.co/rest/v1/',key:'sb_publishable_6vE0OmtVh9mPVlkHv2tMKQ_wPZqYzcM'};
 const cloudOn=!!(CLOUD.url&&CLOUD.key);
 if(cloudOn)CLOUD.url=CLOUD.url.replace(/\/+$/,'');
 const cloud={state:cloudOn?'loading':'local',token:null,exp:0,at:0};
