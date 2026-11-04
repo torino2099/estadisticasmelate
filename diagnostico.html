@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnóstico de conexión · Lotometría Mexicana</title>
+<style>
+:root{--bg:#0a1128;--card:#111d46;--line:rgba(130,158,255,.25);--fg:#eaf0ff;--fg2:#b3bfe6;--muted:#8693c2;--gold:#f5c04a;--ok:#2fc98a;--bad:#ff7283;--warn:#f5c04a;--input:#0a1230}
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;padding:20px max(16px,env(safe-area-inset-left)) 60px}
+main{max-width:760px;margin:0 auto}
+h1{font-size:28px;line-height:1.15;margin:0 0 6px;letter-spacing:.01em}
+h1 span{color:var(--gold)}
+p{margin:8px 0}
+.muted{color:var(--muted);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:16px}
+label{display:block;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg2);font-weight:600;margin-top:12px}
+label:first-child{margin-top:0}
+input{display:block;width:100%;margin-top:5px;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--input);color:var(--fg);font:inherit;min-width:0}
+input:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid #4b8bff;outline-offset:2px}
+details{margin-top:14px}
+summary{cursor:pointer;color:var(--fg2);font-weight:600}
+.row{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+button{font:inherit;font-weight:700;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);padding:11px 16px;cursor:pointer}
+button.main{background:linear-gradient(180deg,#f5c04a,#d99d22);color:#1b1400;border-color:transparent}
+button:disabled{opacity:.45;cursor:not-allowed}
+#cfg{font-size:14px;color:var(--fg2)}
+ol{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+li.st{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:rgba(255,255,255,.025);min-width:0}
+li.st .h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.b{font-size:11px;font-weight:800;letter-spacing:.1em;border-radius:999px;padding:2px 9px;border:1px solid currentColor;flex:none}
+.b.ok{color:var(--ok)}.b.bad{color:var(--bad)}.b.warn{color:var(--warn)}.b.skip{color:var(--muted)}
+li.st .t{font-weight:700}
+li.st .d{color:var(--fg2);font-size:14.5px;margin-top:6px;overflow-wrap:anywhere}
+li.st .f{margin-top:8px;font-size:14.5px;border-left:3px solid var(--gold);padding-left:10px;color:var(--fg)}
+.summary{margin-top:16px;padding:14px;border-radius:12px;font-weight:700}
+.summary.ok{background:rgba(47,201,138,.12);border:1px solid var(--ok)}
+.summary.bad{background:rgba(255,114,131,.1);border:1px solid var(--bad)}
+.summary.warn{background:rgba(245,192,74,.1);border:1px solid var(--warn)}
+code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:6px;font-size:.92em;overflow-wrap:anywhere}
+#tip{margin-top:10px;font-size:14px;color:var(--muted);min-height:20px}
+</style>
+</head>
+<body>
+<main>
+<h1>Diagnóstico de <span>conexión</span></h1>
+<p>Esta página prueba paso a paso la conexión de tu sitio con Supabase y te dice qué corregir. No guarda nada. Tus datos solo se envían a tu propio proyecto de Supabase.</p>
+
+<div class="card">
+  <p id="cfg"></p>
+  <label for="u">Project URL</label>
+  <input id="u" type="text" placeholder="https://abcdefgh.supabase.co" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <label for="k">Clave pública (anon o publishable)</label>
+  <input id="k" type="text" placeholder="eyJ... o sb_publishable_..." autocomplete="off" autocapitalize="off" spellcheck="false">
+  <details>
+    <summary>Probar también el acceso de administrador (opcional)</summary>
+    <label for="e">Correo</label>
+    <input id="e" type="email" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label for="p">Contraseña</label>
+    <input id="p" type="password" autocomplete="off">
+  </details>
+  <div class="row">
+    <button id="go" class="main" type="button">Probar conexión</button>
+    <button id="wt" type="button" disabled title="Primero escribe correo y contraseña y prueba la conexión">Probar permiso de guardado</button>
+  </div>
+  <p class="muted" style="margin-top:10px">El permiso de guardado crea un sorteo de prueba (concurso 999999) y lo borra enseguida.</p>
+</div>
+
+<div class="card" id="out" hidden>
+  <ol id="res"></ol>
+  <div id="sum" class="summary" hidden></div>
+  <div class="row"><button id="cp" type="button">Copiar reporte</button></div>
+  <p id="tip"></p>
+</div>
+</main>
+
+<script src="config.js"></script>
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var GAMES=[['melate',4284],['revancha',3276],['revanchita',1914],['retro',1681]];
+var cfg=window.LOTO_CONFIG||null,token=null,tokenEmail='',steps=[],report='';
+
+(function init(){
+  var t=$('cfg');
+  if(cfg){
+    $('u').value=cfg.url||'';$('k').value=cfg.key||'';
+    t.textContent=(cfg.url&&cfg.key)?'Se encontró config.js en este sitio y sus datos ya están cargados abajo.':'Se encontró config.js, pero la URL o la clave están vacías.';
+  }else{
+    t.textContent='No se encontró config.js junto a esta página. Pega la URL y la clave abajo, o sube diagnostico.html a la misma carpeta que config.js.';
+  }
+})();
+
+function b64(s){try{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return JSON.parse(decodeURIComponent(escape(atob(s))));}catch(e){return null;}}
+function jwt(k){var p=k.split('.');return p.length===3?b64(p[1]):null;}
+function mask(k){return k.length>14?k.slice(0,8)+'…'+k.slice(-4):'(muy corta)';}
+function add(kind,title,detail,fix){steps.push({k:kind,t:title,d:detail||'',f:fix||''});}
+function hdr(key,tok,json){var h={apikey:key};var b=tok||(key.indexOf('eyJ')===0?key:null);if(b)h.Authorization='Bearer '+b;if(json)h['Content-Type']='application/json';return h;}
+function why(st,t){
+  t=(t||'').toLowerCase();
+  if((st===401||st===403)&&(t.indexOf('api key')>=0||t.indexOf('apikey')>=0||t.indexOf('jwt')>=0))return 'KEY';
+  if(t.indexOf('pgrst205')>=0||t.indexOf('42p01')>=0||t.indexOf('could not find the table')>=0||t.indexOf('does not exist')>=0)return 'NOTABLE';
+  if(st===401||st===403||t.indexOf('42501')>=0||t.indexOf('permission denied')>=0)return 'PERM';
+  if(st===404)return 'URL';
+  return 'HTTP';
+}
+
+function render(){
+  var html='',bad=0,warn=0;
+  steps.forEach(function(s){
+    if(s.k==='bad')bad++;if(s.k==='warn')warn++;
+    var lab={ok:'OK',bad:'ERROR',warn:'AVISO',skip:'OMITIDO'}[s.k];
+    html+='<li class="st"><div class="h"><span class="b '+s.k+'">'+lab+'</span><span class="t">'+esc(s.t)+'</span></div>'
+      +(s.d?'<div class="d">'+esc(s.d)+'</div>':'')+(s.f?'<div class="f">'+s.f+'</div>':'')+'</li>';
+  });
+  $('res').innerHTML=html;$('out').hidden=false;
+  var sum=$('sum');sum.hidden=false;
+  if(bad){sum.className='summary bad';sum.textContent='Hay '+bad+' problema'+(bad>1?'s':'')+' por corregir. Empieza por el primer ERROR de la lista.';}
+  else if(warn){sum.className='summary warn';sum.textContent='La conexión funciona, pero hay avisos que conviene revisar.';}
+  else{sum.className='summary ok';sum.textContent='Todo está bien. Si la página principal aún dice Sin conexión, recárgala con Ctrl + F5.';}
+  report='Diagnóstico Lotometría · '+new Date().toLocaleString('es-MX')+'\n'
+    +'URL: '+maskUrl($('u').value.trim())+'\nClave: '+mask($('k').value.trim())+'\nconfig.js encontrado: '+(cfg?'sí':'no')+'\n\n'
+    +steps.map(function(s){return '['+({ok:'OK',bad:'ERROR',warn:'AVISO',skip:'OMITIDO'}[s.k])+'] '+s.t+(s.d?' — '+s.d:'');}).join('\n');
+}
+function esc(x){return String(x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function maskUrl(u){var m=u.match(/^https:\/\/([a-z0-9]+)(\.supabase\.co.*)$/i);return m?'https://'+m[1].slice(0,4)+'…'+m[2]:u;}
+
+async function run(){
+  steps=[];token=null;tokenEmail='';$('wt').disabled=true;$('tip').textContent='';
+  var url=$('u').value.trim(),key=$('k').value.trim(),email=$('e').value.trim(),pass=$('p').value;
+  var U=url.replace(/\/+$/,'');
+
+  // 1. Formato
+  var fmtBad=false;
+  if(!url){add('bad','Project URL','Está vacía.','Cópiala en Supabase: <b>Project Settings</b> y luego <b>API</b>.');fmtBad=true;}
+  else if(!/^https:\/\//i.test(U)){add('bad','Project URL','Debe empezar con https://','Revisa que copiaste la Project URL completa.');fmtBad=true;}
+  else if(/^https:\/\/[^\/]+\/.+/i.test(U)){add('bad','Project URL','Tiene texto de más después del dominio: '+U,'Debe ser solo <code>https://xxxx.supabase.co</code>, sin <code>/rest/v1</code> ni nada después.');fmtBad=true;}
+  else if(!/^https:\/\/[a-z0-9]{10,30}\.supabase\.co$/i.test(U)){add('warn','Project URL','No tiene la forma habitual https://xxxx.supabase.co: '+U,'Si usas un dominio propio, ignora este aviso. Si no, cópiala otra vez.');}
+  else add('ok','Project URL','Tiene el formato correcto.');
+  if(!key){add('bad','Clave pública','Está vacía.','Cópiala en <b>Project Settings</b>, <b>API</b>. Usa la clave <code>anon</code> o <code>publishable</code>.');fmtBad=true;}
+  else{
+    var kb=false;
+    if(/\s/.test(key)){add('bad','Clave pública','Tiene espacios o saltos de línea.','Bórralos: la clave va en una sola línea, sin espacios.');kb=true;}
+    else if(/^["'`]|["'`]$/.test(key)){add('bad','Clave pública','Tiene comillas pegadas al inicio o al final.','En la página, las comillas ya están; pega solo la clave.');kb=true;}
+    else if(/^sb_secret_/.test(key)){add('bad','Clave pública','Es la clave SECRETA (sb_secret).','Nunca la uses en una página pública. Usa la <code>publishable</code> y genera otra clave secreta en Supabase.');kb=true;}
+    else{
+      var jp=jwt(key);
+      if(jp){
+        if(jp.role==='service_role'){add('bad','Clave pública','Es la clave service_role.','Nunca la uses en una página pública: da control total de tu base. Cámbiala por la <code>anon</code> y regenera la service_role en Supabase.');kb=true;}
+        else if(jp.ref&&U&&U.indexOf('//'+jp.ref+'.')<0){add('bad','Clave pública','La clave es de otro proyecto ('+jp.ref+').','La URL y la clave deben ser del mismo proyecto. Cópialas juntas desde <b>Project Settings</b>, <b>API</b>.');kb=true;}
+        else add('ok','Clave pública','Parece una clave anon válida para esta URL ('+mask(key)+').');
+      }else if(/^sb_publishable_/.test(key))add('ok','Clave pública','Es una clave publishable ('+mask(key)+').');
+      else add('warn','Clave pública','No tiene un formato reconocido ('+mask(key)+').','Debe empezar con <code>eyJ</code> o con <code>sb_publishable_</code>. Cópiala otra vez.');
+    }
+    if(kb)fmtBad=true;
+  }
+  if(!url||!key){add('skip','Pruebas con Supabase','No se hicieron porque faltan datos.');render();return;}
+
+  // 2. Alcance
+  var reach=true;
+  try{
+    var r=await fetch(U+'/auth/v1/health',{headers:{apikey:key}});
+    if(r.ok)add('ok','Se alcanza tu proyecto','Supabase respondió ('+r.status+').');
+    else if(r.status===401||r.status===403)add('bad','Se alcanza tu proyecto','Supabase respondió, pero rechazó la clave ('+r.status+').','Cópiala otra vez en <b>Project Settings</b>, <b>API</b>.');
+    else add('warn','Se alcanza tu proyecto','Supabase respondió con el código '+r.status+'.','Si las pruebas siguientes fallan, revisa que el proyecto no esté pausado.');
+  }catch(e){
+    reach=false;
+    add('bad','Se alcanza tu proyecto','No hubo respuesta de '+maskUrl(U)+'.','Causas posibles: la URL está mal escrita, no hay internet, o el proyecto está <b>pausado</b> (los gratis se pausan tras una semana sin uso). Entra a supabase.com, abre tu proyecto y pulsa <b>Restore project</b> si aparece.');
+  }
+  if(!reach){add('skip','Tabla, conteos y acceso','Se omiten hasta que se alcance el proyecto.');render();return;}
+
+  // 3. Tabla
+  var tableOk=false;
+  try{
+    var r2=await fetch(U+'/rest/v1/draws?select=game&limit=1',{headers:hdr(key,null,false)});
+    var txt='';try{txt=await r2.text();}catch(e){}
+    if(r2.ok){
+      tableOk=true;
+      var arr=[];try{arr=JSON.parse(txt);}catch(e){}
+      if(Array.isArray(arr)&&arr.length)add('ok','Tabla draws','Se puede leer con la clave pública.');
+      else add('warn','Tabla draws','Se puede leer, pero está vacía.','Importa <code>draws_seed.csv</code> en <b>Table Editor</b>, tabla <code>draws</code>, <b>Insert</b>, <b>Import data from CSV</b>.');
+    }else{
+      var w=why(r2.status,txt),snip=txt.slice(0,160);
+      if(w==='KEY')add('bad','Tabla draws','Supabase rechazó la clave: '+snip,'Copia otra vez la clave anon o publishable, del mismo proyecto que la URL.');
+      else if(w==='NOTABLE')add('bad','Tabla draws','La tabla no existe: '+snip,'Ejecuta <code>supabase_setup.sql</code> completo en <b>SQL Editor</b>, con tu correo en lugar de TU_CORREO@EJEMPLO.COM.');
+      else if(w==='PERM')add('bad','Tabla draws','Sin permiso de lectura: '+snip,'Vuelve a ejecutar <code>supabase_setup.sql</code> completo; ahí se dan los permisos de lectura y las políticas.');
+      else if(w==='URL')add('bad','Tabla draws','Supabase respondió 404: '+snip,'Revisa la Project URL y que la Data API esté activa en <b>Project Settings</b>, <b>API</b>.');
+      else add('bad','Tabla draws','Error '+r2.status+': '+snip,'Copia este reporte y mándalo para revisarlo.');
+    }
+  }catch(e){add('bad','Tabla draws','No se pudo hacer la consulta ('+e.message+').','Revisa la URL y tu conexión a internet.');}
+
+  // 4. Conteos
+  if(tableOk){
+    var lines=[],low=false;
+    for(var i=0;i<GAMES.length;i++){
+      var g=GAMES[i][0],exp=GAMES[i][1];
+      try{
+        var r3=await fetch(U+'/rest/v1/draws?select=concurso&game=eq.'+g+'&limit=1',{headers:Object.assign(hdr(key,null,false),{Prefer:'count=exact'})});
+        var cr=r3.headers.get('content-range'),n=cr&&cr.indexOf('/')>=0?parseInt(cr.split('/')[1],10):NaN;
+        if(isNaN(n))lines.push(g+': no se pudo leer');
+        else{lines.push(g+': '+n+(n<exp?' (faltan; deberían ser al menos '+exp+')':''));if(n<exp)low=true;}
+      }catch(e){lines.push(g+': error');low=true;}
+    }
+    if(low)add('warn','Sorteos cargados',lines.join(' · '),'Faltan sorteos. En <b>Table Editor</b> vacía la tabla (o corre <code>truncate table public.draws;</code>) e importa de nuevo <code>draws_seed.csv</code>.');
+    else add('ok','Sorteos cargados',lines.join(' · '));
+  }
+
+  // 5. Acceso admin
+  if(email||pass){
+    if(!email||!pass)add('warn','Acceso de administrador','Escribe correo y contraseña para probarlo.');
+    else if(email.indexOf('@')<0)add('bad','Acceso de administrador','Eso no es un correo: '+email,'Aquí se entra con el correo, no con el teléfono.');
+    else{
+      try{
+        var r4=await fetch(U+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pass})});
+        var j={};try{j=await r4.json();}catch(e){}
+        var tt=JSON.stringify(j).toLowerCase();
+        if(r4.ok&&j.access_token){token=j.access_token;var pj=jwt(token);tokenEmail=(pj&&pj.email)||email;add('ok','Acceso de administrador','Entraste como '+tokenEmail+'.');$('wt').disabled=false;}
+        else if(tt.indexOf('not confirmed')>=0)add('bad','Acceso de administrador','El correo no está confirmado.','En <b>Authentication</b>, <b>Users</b>, bórralo y créalo de nuevo con <b>Auto Confirm User</b> marcado.');
+        else if(tt.indexOf('provider')>=0&&tt.indexOf('disabled')>=0||tt.indexOf('logins are disabled')>=0)add('bad','Acceso de administrador','El acceso por correo está apagado.','Actívalo en <b>Authentication</b>, <b>Sign In / Providers</b>, <b>Email</b>.');
+        else if(r4.status===429)add('warn','Acceso de administrador','Demasiados intentos. Espera unos minutos.');
+        else if(r4.status===401||r4.status===403)add('bad','Acceso de administrador','Supabase rechazó la clave.','Revisa la clave pública.');
+        else add('bad','Acceso de administrador','Correo o contraseña incorrectos (o el usuario no existe).','En <b>SQL Editor</b> corre <code>select email, email_confirmed_at from auth.users;</code> para ver si tu correo existe. Si no, créalo en <b>Authentication</b>, <b>Users</b>, <b>Add user</b>, con <b>Auto Confirm User</b>.');
+      }catch(e){add('bad','Acceso de administrador','No se pudo contactar a Supabase ('+e.message+').');}
+    }
+  }else add('skip','Acceso de administrador','No se probó (opcional). Escribe correo y contraseña arriba si quieres probarlo.');
+  render();
+  if(token)$('tip').textContent='Entraste correctamente. Pulsa "Probar permiso de guardado" para comprobar que tu correo puede escribir en la tabla.';
+}
+
+async function writeTest(){
+  if(!token)return;
+  var url=$('u').value.trim().replace(/\/+$/,''),key=$('k').value.trim();
+  $('wt').disabled=true;$('tip').textContent='Probando…';
+  var row={game:'melate',concurso:999999,n1:1,n2:2,n3:3,n4:4,n5:5,n6:6,extra:7,bolsa:0,fecha:'2000-01-01'};
+  try{
+    var r=await fetch(url+'/rest/v1/draws?on_conflict=game,concurso',{method:'POST',headers:Object.assign(hdr(key,token,true),{Prefer:'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify([row])});
+    if(!r.ok){
+      var t='';try{t=await r.text();}catch(e){}
+      steps=steps.filter(function(s){return s.t!=='Permiso de guardado';});
+      add('bad','Permiso de guardado','Supabase rechazó el guardado ('+r.status+'): '+t.slice(0,140),'Tu correo ('+esc(tokenEmail)+') no coincide con el de las políticas. Cambia TU_CORREO@EJEMPLO.COM en <code>supabase_setup.sql</code> por ese mismo correo y vuelve a ejecutarlo completo.');
+    }else{
+      var d=await fetch(url+'/rest/v1/draws?game=eq.melate&concurso=eq.999999',{method:'DELETE',headers:hdr(key,token,false)});
+      steps=steps.filter(function(s){return s.t!=='Permiso de guardado';});
+      if(d.ok)add('ok','Permiso de guardado','Tu correo ('+tokenEmail+') puede guardar. El sorteo de prueba se creó y se borró.');
+      else add('warn','Permiso de guardado','Se pudo guardar, pero no se pudo borrar el sorteo de prueba (concurso 999999 de melate).','Bórralo a mano en <b>Table Editor</b>, tabla <code>draws</code>.');
+    }
+  }catch(e){steps=steps.filter(function(s){return s.t!=='Permiso de guardado';});add('bad','Permiso de guardado','No se pudo hacer la prueba ('+e.message+').');}
+  render();$('tip').textContent='';$('wt').disabled=false;
+}
+
+$('go').addEventListener('click',function(){run();});
+$('wt').addEventListener('click',function(){writeTest();});
+$('cp').addEventListener('click',function(){
+  var t=$('tip');
+  function fallback(){var ta=document.createElement('textarea');ta.value=report;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');t.textContent='Reporte copiado.';}catch(e){t.textContent='No se pudo copiar. Selecciona el texto de la lista y cópialo a mano.';}document.body.removeChild(ta);}
+  try{navigator.clipboard.writeText(report).then(function(){t.textContent='Reporte copiado. No incluye tu clave completa ni tu contraseña.';},fallback);}catch(e){fallback();}
+});
+})();
+</script>
+</body>
+</html>
