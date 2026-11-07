@@ -239,7 +239,9 @@ input,select{font:inherit;color:var(--fg);background:var(--input);border:1px sol
 .star-h h2{font-family:var(--font-d);font-size:clamp(42px,9vw,92px);line-height:.95;letter-spacing:.04em;text-transform:uppercase;background:linear-gradient(100deg,#fff3c4,#f5c04a 30%,#ff9d3d 55%,#fff3c4 80%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:slide 5s linear infinite;filter:drop-shadow(0 4px 18px rgba(245,192,74,.4))}
 .star-h p{max-width:62ch;margin:12px auto 0;color:var(--fg-2);font-size:15px}
 .spk{position:absolute;width:6px;height:6px;border-radius:50%;background:#fff3c4;box-shadow:0 0 10px 2px rgba(245,192,74,.9);animation:tw 2.6s ease-in-out infinite;animation-delay:var(--d)}
-.tks{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,430px),1fr))}
+.tk-games{display:grid;gap:30px}
+.tk-gh{margin:0 0 12px;font-size:20px;color:var(--gold);letter-spacing:.02em}
+.tks{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}
 .tk{position:relative;border-radius:20px;padding:20px 20px 16px;min-width:0;overflow:hidden;background:linear-gradient(155deg,#18307a 0%,#0d1a47 55%,#0a1130 100%);border:1px solid rgba(245,192,74,.55);box-shadow:inset 0 0 0 1px rgba(255,255,255,.04),0 0 42px color-mix(in srgb,var(--acc) 26%,transparent)}
 .tk::after{content:"";position:absolute;inset:-40% -60%;background:linear-gradient(105deg,transparent 42%,rgba(255,243,196,.17) 50%,transparent 58%);transform:translateX(-60%);animation:sheen 5s ease-in-out infinite;pointer-events:none}
 .tk-top{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap}
@@ -254,7 +256,8 @@ input,select{font:inherit;color:var(--fg);background:var(--input);border:1px sol
 .tk-perf{position:relative;border-top:2px dashed rgba(245,192,74,.4);margin:16px -20px 14px}
 .tk-perf::before,.tk-perf::after{content:"";position:absolute;top:-11px;width:20px;height:20px;border-radius:50%;background:#070d24;border:1px solid rgba(245,192,74,.55)}
 .tk-perf::before{left:-10px}.tk-perf::after{right:-10px}
-.tk-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px}
+.tk-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+@media (min-width:1100px){.tks{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .tk-stats div{border:1px solid rgba(245,192,74,.22);border-radius:10px;padding:7px 9px;background:rgba(255,255,255,.03)}
 .tk-stats small{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .tk-stats b{font-family:var(--font-d);font-size:22px;color:#fff;font-variant-numeric:tabular-nums}
@@ -947,22 +950,34 @@ async function doImport(){
 function copyText(t){try{navigator.clipboard.writeText(t).then(()=>toast('Copiado'),()=>toast('No se pudo copiar'));}catch(e){toast('No se pudo copiar');}}
 
 /* ---------- Boletos estrella ---------- */
+function normCdf(z){const t=1/(1+0.2316419*Math.abs(z)),p=0.3989423*Math.exp(-z*z/2)*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));return z>0?1-p:p;}
 function fitScore(d,sel){
   const ev=sel.filter(x=>x%2===0).length,pr=sel.filter(x=>d.prime[x]).length;
   const sPar=100*d.evenDist[ev]/Math.max(...d.evenDist),sPri=100*d.primeDist[pr]/Math.max(...d.primeDist);
   const S=sel.reduce((a,b)=>a+b,0),z=(S-d.sumMean)/d.sumSd,sSum=100*Math.exp(-z*z/2);
   return 0.35*sPar+0.40*sSum+0.25*sPri;
 }
-const STAR_SKIP=2; /* un boleto no usa números que salieron en los últimos 2 sorteos del mismo juego */
+const STAR_SKIP=3; /* un boleto no usa números que salieron en los últimos 3 sorteos del mismo juego */
 function starPick(g){
   const d=data(g);if(d.star)return d.star;
   const max=d.max,N=d.N,avgGap=max/6,W=Math.min(100,N),rec=winFreq(d,W),exA=N*6/max,exR=W*6/max;
   const all=[...Array(max).keys()].map(i=>i+1);
   const comp=new Array(max+1).fill(0),fa=new Array(max+1).fill(0),fr=new Array(max+1).fill(0);
-  for(const n of all){fa[n]=d.freq[n]/exA;fr[n]=rec.freq[n]/exR;comp[n]=0.40*fa[n]+0.35*fr[n]+0.25*Math.min(2,gapOf(d,n)/avgGap);}
+  /* Regla de Laplace: probabilidad suavizada de que el número salga en un sorteo = (veces+1)/(sorteos+2).
+     Regla de Bayes: esa estimación es la creencia previa (Beta, con peso de K sorteos) y se actualiza con
+     lo ocurrido en los últimos W sorteos -> probabilidad posterior. */
+  const p0=6/max,K=Math.min(100,N),pL=new Array(max+1).fill(0),pB=new Array(max+1).fill(0),pUp=new Array(max+1).fill(0);
+  for(const n of all){
+    pL[n]=(d.freq[n]+1)/(N+2);
+    pB[n]=(K*pL[n]+rec.freq[n])/(K+W);
+    const sdB=Math.sqrt(pB[n]*(1-pB[n])/(K+W+1));
+    pUp[n]=normCdf((pB[n]-p0)/sdB);                      /* prob. posterior de que el número esté por encima de lo esperado */
+    fa[n]=pL[n]/p0;fr[n]=pB[n]/p0;
+    comp[n]=0.45*fr[n]+0.30*2*pUp[n]+0.25*Math.min(2,gapOf(d,n)/avgGap);
+  }
   const lastRows=d.rows.slice(-STAR_SKIP),skip=new Set();lastRows.forEach(r=>r.n.forEach(x=>skip.add(x)));
-  let avail=all.filter(n=>!skip.has(n));if(avail.length<12)avail=all;
-  const pool=avail.slice().sort((a,b)=>comp[b]-comp[a]||a-b).slice(0,18).sort((a,b)=>a-b);
+  let avail=all.filter(n=>!skip.has(n));if(avail.length<6)avail=all;
+  const ranked=avail.slice().sort((a,b)=>comp[b]-comp[a]||a-b);
   const pc=Array.from({length:max+1},()=>new Uint16Array(max+1));
   d.rows.forEach(r=>{const a=r.n;for(let i=0;i<5;i++)for(let j=i+1;j<6;j++)pc[a[i]][a[j]]++;});
   const expP=N*15/C(max,2),nDec=Math.ceil(max/10),dec=n=>Math.floor((n-1)/10);
@@ -970,9 +985,15 @@ function starPick(g){
     {evMin:2,evMax:4,prMin:1,prMax:3,lo:d.p15,hi:d.p85,minDec:max>=56?4:3,maxPer:2,maxCons:1},
     {evMin:1,evMax:5,prMin:0,prMax:4,lo:d.p10,hi:d.p90,minDec:3,maxPer:3,maxCons:2}
   ];
-  let best=null;
-  for(const T of tiers){
-    let top=-1e9,pick=null;const cur=[];
+  /* Se reúnen todas las combinaciones que cumplen las reglas, se ordenan por calificación y se eligen 3 boletos
+     que compartan como máximo 3 números entre sí (si no alcanza, 4 y luego 5). */
+  let picks=[],tierUsed=0;
+  const scoreOf=(cur,sum,ev)=>{let sc=0;for(const n of cur)sc+=comp[n];
+    let pb=0;for(let i=0;i<5;i++)for(let j=i+1;j<6;j++)pb+=(pc[cur[i]][cur[j]]+1)/(expP+1);
+    return sc+0.06*pb-0.5*Math.abs(sum-d.sumMean)/d.sumSd+(ev===3?0.3:0);};
+  const overlap=(a,b)=>a.filter(x=>b.includes(x)).length;
+  search:for(const maxOv of [3,4,5])for(let ti=0;ti<tiers.length;ti++)for(const PS of [18,24,30]){
+    const T=tiers[ti],pool=ranked.slice(0,PS).sort((a,b)=>a-b),cand=[],cur=[];
     const go=start=>{
       if(cur.length===6){
         let sum=0,ev=0,pr=0,cons=0;const dc=new Array(nDec).fill(0);
@@ -980,46 +1001,52 @@ function starPick(g){
         if(ev<T.evMin||ev>T.evMax||pr<T.prMin||pr>T.prMax||sum<T.lo||sum>T.hi||cons>T.maxCons)return;
         let used=0,mx=0;for(const k of dc){if(k)used++;if(k>mx)mx=k;}
         if(used<T.minDec||mx>T.maxPer)return;
-        let sc=0;for(const n of cur)sc+=comp[n];
-        let pb=0;for(let i=0;i<5;i++)for(let j=i+1;j<6;j++)pb+=pc[cur[i]][cur[j]]/expP;
-        sc+=0.06*pb-0.5*Math.abs(sum-d.sumMean)/d.sumSd+(ev===3?0.3:0);
-        if(sc>top){top=sc;pick=cur.slice();}
+        cand.push({n:cur.slice(),sc:scoreOf(cur,sum,ev)});
         return;
       }
       for(let i=start;i<=pool.length-(6-cur.length);i++){cur.push(pool[i]);go(i+1);cur.pop();}
     };
     go(0);
-    if(pick){best=pick;break;}
+    cand.sort((a,b)=>b.sc-a.sc);
+    const chosen=[];
+    for(const c of cand){if(chosen.every(x=>overlap(x.n,c.n)<=maxOv)){chosen.push(c);if(chosen.length===3)break;}}
+    if(chosen.length===3){picks=chosen.map(c=>c.n);tierUsed=ti;break search;}
+    if(chosen.length>picks.length){picks=chosen.map(c=>c.n);tierUsed=ti;}
   }
-  if(!best)best=pool.slice().sort((a,b)=>comp[b]-comp[a]).slice(0,6).sort((a,b)=>a-b);
+  /* último recurso (casi imposible): completa con los mejores números disponibles, siempre sin repetir los últimos 3 sorteos */
+  for(let k=0;picks.length<3;k++){const c=ranked.slice(k,k+6).sort((a,b)=>a-b);if(c.length===6&&!picks.some(p=>p.join()===c.join()))picks.push(c);else if(k>ranked.length)break;}
   const rankA=all.slice().sort((a,b)=>fa[b]-fa[a]||a-b),rankR=all.slice().sort((a,b)=>fr[b]-fr[a]||a-b);
   const hot=new Set(rankA.slice(0,12).concat(rankR.slice(0,12)));
-  const labels=best.map(n=>hot.has(n)?'hot':(gapOf(d,n)>=avgGap*1.5?'due':'base'));
-  const sum=best.reduce((a,b)=>a+b,0),ev=best.filter(x=>x%2===0).length,pr=best.filter(x=>d.prime[x]).length;
-  const used=new Set(best.map(dec)).size;
-  return d.star={nums:best,labels,sum,ev,pr,used,nDec,score:fitScore(d,best),from:lastRows.map(r=>r.c)};
+  return d.star=picks.map(best=>{
+    const labels=best.map(n=>hot.has(n)?'hot':(gapOf(d,n)>=avgGap*1.5?'due':'base'));
+    const sum=best.reduce((a,b)=>a+b,0),ev=best.filter(x=>x%2===0).length,pr=best.filter(x=>d.prime[x]).length;
+    const used=new Set(best.map(dec)).size;
+    return {nums:best,labels,sum,ev,pr,used,nDec,score:fitScore(d,best),from:lastRows.map(r=>r.c),tier:tierUsed,pb:best.map(n=>pB[n]),pup:best.map(n=>pUp[n]),p0,pbAvg:best.reduce((a,n)=>a+pB[n],0)/6,pupAvg:best.reduce((a,n)=>a+pUp[n],0)/6};
+  });
 }
 function starHTML(){
   const sp=[[6,18,0],[14,70,.6],[24,30,1.2],[33,82,.3],[46,22,1.6],[58,76,.9],[68,16,.4],[78,64,1.4],[88,28,.7],[94,80,1.1],[10,52,1.8],[84,48,.2]];
   const lab={hot:['Caliente','l-hot'],due:['Rezagado','l-due'],base:['Base','l-base']};
-  const tix=ORDER.map((g,t)=>{
-    const G=GAMES[g],d=data(g),s=starPick(g),next=d.rows[d.N-1].c+1;
-    const balls=s.nums.map((n,i)=>'<div class="tk-b" style="--i:'+i+'"><span class="ball d'+Math.floor((n-1)/10)+'">'+n+'</span><small class="'+lab[s.labels[i]][1]+'">'+lab[s.labels[i]][0]+'</small></div>').join('');
+  const card=(g,t,k,s)=>{
+    const G=GAMES[g],d=data(g),next=d.rows[d.N-1].c+1;
+    const balls=s.nums.map((n,i)=>'<div class="tk-b" style="--i:'+i+'" title="Probabilidad bayesiana de salir: '+(s.pb[i]*100).toFixed(1)+'% (esperada '+(s.p0*100).toFixed(1)+'%)"><span class="ball d'+Math.floor((n-1)/10)+'">'+n+'</span><small class="'+lab[s.labels[i]][1]+'">'+lab[s.labels[i]][0]+'</small></div>').join('');
     const inZ=s.sum>=d.p10&&s.sum<=d.p90;
-    return '<article class="tk" style="--acc:'+G.color+';--t:'+t+'"><div class="tk-top"><div class="tk-name"><span class="ico">'+ICONS[g]+'</span><h3>'+G.name+'</h3></div><span class="tk-no">Concurso #'+next+'</span></div>'
+    return '<article class="tk" style="--acc:'+G.color+';--t:'+t+'"><div class="tk-top"><div class="tk-name"><span class="ico">'+ICONS[g]+'</span><h3>'+G.name+'</h3></div><span class="tk-no">Boleto '+(k+1)+' · Concurso #'+next+'</span></div>'
      +'<div class="tk-balls" aria-label="Números del boleto de '+G.name+': '+s.nums.join(', ')+'">'+balls+'</div><div class="tk-perf"></div>'
      +'<div class="tk-stats"><div><small>Suma</small><b>'+s.sum+'</b></div><div><small>Pares / impares</small><b>'+s.ev+' / '+(6-s.ev)+'</b></div><div><small>Primos</small><b>'+s.pr+'</b></div><div><small>Decenas</small><b>'+s.used+' de '+s.nDec+'</b></div></div>'
      +'<div class="tk-score"><span>Coincidencia</span><div class="tk-bar"><i style="width:'+Math.round(s.score)+'%"></i></div><b>'+Math.round(s.score)+'/100</b></div>'
      +'<p class="rnd-cap" style="margin-top:8px">Suma '+(inZ?'dentro':'fuera')+' de la zona caliente '+d.p10+'–'+d.p90+' · basado en '+fmt(d.N)+' sorteos</p>'
-     +'<p class="rnd-cap" style="margin-top:4px">Sin repetir números de los concursos #'+s.from.join(' y #')+'</p>'
-     +'<div class="tk-act"><button class="btn sm" data-act="starcopy" data-g="'+g+'">Copiar boleto</button><button class="btn sm" data-act="starcalc" data-g="'+g+'">Analizar en la calculadora</button></div></article>';
-  }).join('');
+     +'<p class="rnd-cap" style="margin-top:4px">Laplace + Bayes: cada número tiene en promedio '+(s.pbAvg*100).toFixed(1)+'% de salir por sorteo (esperado '+(s.p0*100).toFixed(1)+'%) y '+Math.round(s.pupAvg*100)+'% de confianza de estar por encima de lo esperado</p>'
+     +'<p class="rnd-cap" style="margin-top:4px">Sin repetir números de los concursos '+s.from.map(c=>'#'+c).join(', ').replace(/, ([^,]*)$/,' y $1')+'</p>'
+     +'<div class="tk-act"><button class="btn sm" data-act="starcopy" data-g="'+g+'" data-k="'+k+'">Copiar boleto</button><button class="btn sm" data-act="starcalc" data-g="'+g+'" data-k="'+k+'">Analizar en la calculadora</button></div></article>';
+  };
+  const tix=ORDER.map((g,t)=>'<section class="tk-game"><h3 class="tk-gh">'+GAMES[g].name+' · 3 boletos</h3><div class="tks">'+starPick(g).map((s,k)=>card(g,t,k,s)).join('')+'</div></section>').join('');
   return '<div class="star-h">'+sp.map(p=>'<i class="spk" style="left:'+p[0]+'%;top:'+p[1]+'%;--d:'+p[2]+'s"></i>').join('')
-   +'<h2>Boletos estrella</h2><p>Un boleto de 6 números por sorteo, armado con los números de mejor ajuste estadístico para el próximo concurso. Se recalcula solo cuando se agregan sorteos nuevos.</p></div>'
-   +'<div class="tks">'+tix+'</div>'
+   +'<h2>Boletos estrella</h2><p>Tres boletos de 6 números por sorteo, distintos entre sí (comparten como máximo 3 números), armados con los números de mejor ajuste estadístico para el próximo concurso. Se recalcula solo cuando se agregan sorteos nuevos.</p></div>'
+   +'<div class="tk-games">'+tix+'</div>'
    +'<div class="star-foot"><div class="legend"><span><i style="background:#f5c04a"></i>Caliente: sale mucho en todo el histórico o en los últimos 100</span><span><i style="background:#7fb0ff"></i>Rezagado: lleva más de 1.5 veces su intervalo normal sin salir</span><span><i style="background:#93a0cf"></i>Base: completa el equilibrio</span></div>'
-   +'<div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px"><button class="btn gold" data-act="starcopyall">Copiar los 4 boletos</button></div>'
-   +'<details><summary>Cómo se eligen los números</summary><p class="note" style="margin-top:8px">Cada número recibe una calificación con tres partes: frecuencia en todo el histórico (40%), forma en los últimos 100 sorteos (35%) y tiempo sin salir frente a su intervalo normal (25%). De los 18 mejores se prueban todas las combinaciones y gana la mejor que cumpla estas reglas: suma dentro del 70% central de los sorteos pasados, de 2 a 4 pares, de 1 a 3 primos, máximo 2 por decena, al menos 4 decenas distintas (3 en Melate Retro) y a lo más una pareja de números consecutivos. Además, no puede llevar ningún número que haya salido en los 2 sorteos más recientes del mismo juego (cuentan solo los 6 principales). A igualdad, se prefieren las parejas que más han salido juntas.</p></details>'
+   +'<div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px"><button class="btn gold" data-act="starcopyall">Copiar los 12 boletos</button></div>'
+   +'<details><summary>Cómo se eligen los números</summary><p class="note" style="margin-top:8px">Cada número recibe una calificación con tres partes. 1) Regla de Laplace: se estima la probabilidad de que salga en un sorteo como (veces que salió + 1) ÷ (sorteos + 2), así ningún número queda en cero ni se sobrevalora por pocos datos. 2) Regla de Bayes: esa estimación se toma como creencia previa y se actualiza con lo ocurrido en los últimos 100 sorteos, lo que da una probabilidad posterior (45% de la calificación) y la confianza de que el número esté por encima de lo esperado (30%). 3) Tiempo sin salir frente a su intervalo normal (25%). Las parejas también se suavizan con Laplace. De los 18 mejores se prueban todas las combinaciones y gana la mejor que cumpla estas reglas: suma dentro del 70% central de los sorteos pasados, de 2 a 4 pares, de 1 a 3 primos, máximo 2 por decena, al menos 4 decenas distintas (3 en Melate Retro) y a lo más una pareja de números consecutivos. Además, no puede llevar ningún número que haya salido en los 3 sorteos más recientes del mismo juego (cuentan solo los 6 principales). Los 3 boletos de cada sorteo son las mejores combinaciones que cumplen todo lo anterior, con la condición de que compartan como máximo 3 números entre sí. A igualdad, se prefieren las parejas que más han salido juntas.</p></details>'
    +'<p class="note" style="text-align:center">Esto describe cómo se han comportado los sorteos pasados. Todas las combinaciones tienen la misma probabilidad de salir; el boleto no aumenta la posibilidad de ganar.</p></div>';
 }
 
@@ -1048,9 +1075,9 @@ document.addEventListener('click',e=>{
   }
   else if(a==='import'){doImport();}
   else if(a==='openStar'){openModal('Boletos estrella',starHTML(),'star');}
-  else if(a==='starcopy'){const g=t.dataset.g,st=starPick(g);copyText(GAMES[g].name+' #'+(data(g).rows[data(g).N-1].c+1)+': '+st.nums.join(' - '));}
-  else if(a==='starcopyall'){copyText(ORDER.map(g=>GAMES[g].name+' #'+(data(g).rows[data(g).N-1].c+1)+': '+starPick(g).nums.join(' - ')).join('\n'));}
-  else if(a==='starcalc'){const g=t.dataset.g;calc.g=g;calc.sel=new Set(starPick(g).nums);openModal('Calculadora de probabilidad',calcShell(),'calc');renderCalc();}
+  else if(a==='starcopy'){const g=t.dataset.g,st=starPick(g)[+t.dataset.k||0];copyText(GAMES[g].name+' #'+(data(g).rows[data(g).N-1].c+1)+' · Boleto '+((+t.dataset.k||0)+1)+': '+st.nums.join(' - '));}
+  else if(a==='starcopyall'){copyText(ORDER.map(g=>starPick(g).map((s,k)=>GAMES[g].name+' #'+(data(g).rows[data(g).N-1].c+1)+' · Boleto '+(k+1)+': '+s.nums.join(' - ')).join('\n')).join('\n'));}
+  else if(a==='starcalc'){const g=t.dataset.g;calc.g=g;calc.sel=new Set(starPick(g)[+t.dataset.k||0].nums);openModal('Calculadora de probabilidad',calcShell(),'calc');renderCalc();}
   else if(a==='openRandom'){ORDER.forEach(g=>{rnd.res[g]=rndGen(g);});openModal('Números al azar',randomHTML(),'rand');}
   else if(a==='rndall')rndAll();
   else if(a==='rndone'){const g=t.dataset.g;rnd.res[g]=rndGen(g);$('#modal-body').innerHTML=randomHTML();}
